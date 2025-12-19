@@ -8,13 +8,32 @@ interface VoiceVisualizerProps {
   count?: number;
 }
 
-export const VoiceVisualizer: React.FC<VoiceVisualizerProps> = ({ 
+export const VoiceVisualizer: React.FC<VoiceVisualizerProps> = React.memo(({ 
   data, 
   color = "astra-saffron", 
   count = 12 
 }) => {
+  const bars = React.useMemo(() => {
+    // If no real-time data provided, return null
+    if (!data || data.length === 0) return null;
+    
+    // Real-time visualization
+    // We sub-sample the frequency data to fit the bar count
+    const step = Math.floor(data.length / count);
+    return Array.from({ length: count }, (_, i) => {
+      // Basic average of a chunk of frequencies for smoother visual
+      let sum = 0;
+      for (let j = 0; j < step; j++) {
+        sum += data[i * step + j];
+      }
+      const val = sum / step;
+      // Scale 0-255 to 10-100% height
+      return Math.max(15, (val / 255) * 100);
+    });
+  }, [data, count]);
+
   // If no real-time data provided, fallback to standard animation
-  if (!data || data.length === 0) {
+  if (!bars) {
     return (
       <div className="flex items-end justify-center gap-1 h-6 w-auto">
         {[...Array(5)].map((_, i) => (
@@ -37,20 +56,6 @@ export const VoiceVisualizer: React.FC<VoiceVisualizerProps> = ({
     );
   }
 
-  // Real-time visualization
-  // We sub-sample the frequency data to fit the bar count
-  const step = Math.floor(data.length / count);
-  const bars = Array.from({ length: count }, (_, i) => {
-    // Basic average of a chunk of frequencies for smoother visual
-    let sum = 0;
-    for (let j = 0; j < step; j++) {
-      sum += data[i * step + j];
-    }
-    const val = sum / step;
-    // Scale 0-255 to 10-100% height
-    return Math.max(15, (val / 255) * 100);
-  });
-
   return (
     <div className="flex items-center justify-center gap-1.5 h-12 px-4 bg-white/5 backdrop-blur-md rounded-full border border-white/10">
       {bars.map((height, i) => (
@@ -67,4 +72,4 @@ export const VoiceVisualizer: React.FC<VoiceVisualizerProps> = ({
       ))}
     </div>
   );
-};
+});

@@ -12,9 +12,19 @@ const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 let chatInstance: Chat | null = null;
 let currentGenMode: GenerationMode = 'CHAT'; // Track current mode to detect switches
 let currentModelId = 'gemini-3-pro-preview';
+
+// Singleton audio context for TTS to prevent multiple context creation
 let ttsAudioContext: AudioContext | null = null;
 let ttsSource: AudioBufferSourceNode | null = null;
 let currentTtsRequestId = 0; // Track active TTS request to handle cancellation
+
+// Initialize audio context lazily and reuse
+const getTtsAudioContext = () => {
+    if (!ttsAudioContext) {
+        ttsAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+    }
+    return ttsAudioContext;
+};
 
 // --- Get System Instruction Based on Astra Mode ---
 const getSystemPrompt = (astraMode: AstraMode) => {
@@ -200,14 +210,12 @@ export const speakText = async (
         return;
     }
 
-    // Initialize Audio Context if needed
-    if (!ttsAudioContext) {
-        ttsAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-    }
+    // Get or initialize Audio Context (reused for efficiency)
+    const audioContext = getTtsAudioContext();
     
     // Resume context if suspended (browser autoplay policy)
-    if (ttsAudioContext.state === 'suspended') {
-        await ttsAudioContext.resume();
+    if (audioContext.state === 'suspended') {
+        await audioContext.resume();
     }
 
     // Determine Voice
@@ -235,14 +243,14 @@ export const speakText = async (
         const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
         
         if (base64Audio) {
-            const audioBuffer = await decodeAudioData(base64Audio, ttsAudioContext);
+            const audioBuffer = await decodeAudioData(base64Audio, audioContext);
             
             // CHECK CANCELLATION: Decoding is async, check again
             if (requestId !== currentTtsRequestId) return;
 
-            const source = ttsAudioContext.createBufferSource();
+            const source = audioContext.createBufferSource();
             source.buffer = audioBuffer;
-            source.connect(ttsAudioContext.destination);
+            source.connect(audioContext.destination);
             
             source.onended = () => {
                 // Only trigger complete if this is still the active source

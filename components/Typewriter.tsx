@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 
 interface TypewriterProps {
@@ -8,33 +8,52 @@ interface TypewriterProps {
   className?: string;
 }
 
-export const Typewriter: React.FC<TypewriterProps> = ({ text, speed = 5, className }) => {
+export const Typewriter: React.FC<TypewriterProps> = React.memo(({ text, speed = 5, className }) => {
   const [displayedText, setDisplayedText] = useState('');
+  const textRef = useRef(text);
+  const displayedLengthRef = useRef(0);
 
   // Reset if the text content seems to be from a completely new message source
-  // We use a simple heuristic: if the new text is shorter than what we displayed, it's likely a reset/new message.
   useEffect(() => {
-    if (text.length < displayedText.length) {
+    if (text.length < displayedLengthRef.current) {
       setDisplayedText('');
+      displayedLengthRef.current = 0;
     }
-  }, [text, displayedText.length]);
+    textRef.current = text;
+  }, [text]);
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setDisplayedText((prev) => {
-        if (prev.length < text.length) {
-          // Calculate how many characters to add to catch up smoothly
-          // If the stream is very fast, we add more characters per tick to prevent lagging behind
-          const diff = text.length - prev.length;
-          const chunk = Math.max(1, Math.floor(diff / 5)); 
-          return text.substring(0, prev.length + chunk);
-        }
-        return prev;
-      });
-    }, speed);
+    let animationId: number;
+    let lastTime = 0;
 
-    return () => clearInterval(timer);
-  }, [text, speed]);
+    const animate = (currentTime: number) => {
+      const elapsed = currentTime - lastTime;
+      
+      if (elapsed >= speed) {
+        setDisplayedText((prev) => {
+          const currentText = textRef.current;
+          if (prev.length < currentText.length) {
+            const diff = currentText.length - prev.length;
+            const chunk = Math.max(1, Math.floor(diff / 5)); 
+            const newText = currentText.substring(0, prev.length + chunk);
+            displayedLengthRef.current = newText.length;
+            return newText;
+          }
+          displayedLengthRef.current = prev.length;
+          return prev;
+        });
+        lastTime = currentTime;
+      }
+      
+      if (displayedLengthRef.current < textRef.current.length) {
+        animationId = requestAnimationFrame(animate);
+      }
+    };
+
+    animationId = requestAnimationFrame(animate);
+
+    return () => cancelAnimationFrame(animationId);
+  }, [speed]);
 
   return (
     <div className={className}>
@@ -68,4 +87,4 @@ export const Typewriter: React.FC<TypewriterProps> = ({ text, speed = 5, classNa
       )}
     </div>
   );
-};
+});
