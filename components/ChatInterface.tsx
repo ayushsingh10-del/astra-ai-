@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { 
   Send, Mic, Image as ImageIcon, Terminal, X, 
   Activity, ChevronLeft, LayoutGrid, BrainCircuit, 
@@ -53,17 +53,23 @@ const detectNewsIntent = (text: string): boolean => {
 };
 
 // Helper to convert internal Message type to Gemini Content type for history preservation
+// Optimized with early returns
 const getHistoryForGemini = (msgs: Message[]): Content[] => {
-    return msgs
-     .filter((m: Message) => m.id !== 'init' && !m.text.startsWith('>> IMAGE_GENERATED')) 
-     .map((m: Message) => ({ 
-         role: m.role === Role.USER ? 'user' : 'model', 
-         parts: [{ text: m.text }] 
-     }));
+    const filtered: Content[] = [];
+    for (let i = 0; i < msgs.length; i++) {
+        const m = msgs[i];
+        if (m.id !== 'init' && !m.text.startsWith('>> IMAGE_GENERATED')) {
+            filtered.push({ 
+                role: m.role === Role.USER ? 'user' : 'model', 
+                parts: [{ text: m.text }] 
+            });
+        }
+    }
+    return filtered;
 };
 
 // --- SPECIALIZED FORENSIC RESULT COMPONENT ---
-const ForensicResultDisplay = ({ text }: { text: string }) => {
+const ForensicResultDisplay = React.memo(({ text }: { text: string }) => {
   const anomalyMatch = text.match(/\[ANOMALIES_DETECTED\]([\s\S]*?)\[FORENSIC_REPORT\]/);
   const reportMatch = text.match(/\[FORENSIC_REPORT\]([\s\S]*?)\[CONCLUSION\]/);
   const conclusionMatch = text.match(/\[CONCLUSION\]([\s\S]*)/);
@@ -145,7 +151,7 @@ const ForensicResultDisplay = ({ text }: { text: string }) => {
         )}
     </div>
   );
-};
+});
 
 
 export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onBack }) => {
@@ -224,13 +230,18 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onBack }) => {
       return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Debounced localStorage save for better performance
   useEffect(() => {
-     if (isInitialized.current) {
+     if (!isInitialized.current) return;
+     
+     const timeoutId = setTimeout(() => {
         localStorage.setItem('ASTRA_HISTORY', JSON.stringify(messages));
         localStorage.setItem('ASTRA_MODE', astraMode);
         localStorage.setItem('ASTRA_GEN_MODE', genMode);
         localStorage.setItem('ASTRA_VOICE_SETTINGS', JSON.stringify(voiceSettings));
-     }
+     }, 500); // Debounce by 500ms
+     
+     return () => clearTimeout(timeoutId);
   }, [messages, astraMode, genMode, voiceSettings]);
 
   useEffect(() => {
@@ -273,7 +284,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onBack }) => {
       }
   }, [messages, isVoiceEnabled, isLoading, astraMode, voiceSettings]);
 
-  const startFreshSession = (newAstraMode: AstraMode, newGenMode: GenerationMode) => {
+  const startFreshSession = useCallback((newAstraMode: AstraMode, newGenMode: GenerationMode) => {
       initializeChat(newGenMode, newAstraMode);
       
       let greeting = INITIAL_GREETING_SHIELD;
@@ -286,27 +297,27 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onBack }) => {
         text: greeting,
         timestamp: Date.now()
       }]);
-  };
+  }, []);
 
-  const switchProtocol = (newMode: AstraMode) => {
+  const switchProtocol = useCallback((newMode: AstraMode) => {
       setAstraMode(newMode);
       startFreshSession(newMode, genMode);
-  };
+  }, [genMode, startFreshSession]);
 
-  const switchGenMode = (newMode: GenerationMode) => {
+  const switchGenMode = useCallback((newMode: GenerationMode) => {
       setGenMode(newMode);
       setFeatureMenuOpen(false);
       startFreshSession(astraMode, newMode);
-  };
+  }, [astraMode, startFreshSession]);
 
-  const clearHistory = () => {
+  const clearHistory = useCallback(() => {
       localStorage.removeItem('ASTRA_HISTORY');
       localStorage.removeItem('ASTRA_MODE');
       localStorage.removeItem('ASTRA_GEN_MODE');
       startFreshSession(astraMode, genMode);
-  };
+  }, [astraMode, genMode, startFreshSession]);
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
       if (e.target.files && e.target.files[0]) {
           const file = e.target.files[0];
           const reader = new FileReader();
@@ -322,15 +333,15 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onBack }) => {
           };
           reader.readAsDataURL(file);
       }
-  };
+  }, []);
 
-  const handleCopy = (text: string, id: string) => {
+  const handleCopy = useCallback((text: string, id: string) => {
       navigator.clipboard.writeText(text);
       setCopiedId(id);
       setTimeout(() => setCopiedId(null), 2000);
-  };
+  }, []);
 
-  const handleSpeakToggle = (text: string, id: string) => {
+  const handleSpeakToggle = useCallback((text: string, id: string) => {
       if (speakingMessageId === id) {
           // Stop
           speakText('', astraMode, undefined, true);
@@ -342,7 +353,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onBack }) => {
               setSpeakingMessageId(prev => prev === id ? null : prev);
           });
       }
-  };
+  }, [speakingMessageId, astraMode, voiceSettings]);
 
   const handleSend = async () => {
     if ((!input.trim() && !attachment) || isLoading) return;
@@ -424,7 +435,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onBack }) => {
     setScanningImage(null);
   };
 
-  const toggleLiveSession = () => {
+  const toggleLiveSession = useCallback(() => {
       if (isLiveMode) {
           liveSessionRef.current?.stop();
           liveSessionRef.current = null;
@@ -438,9 +449,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onBack }) => {
           });
           liveSessionRef.current = session;
       }
-  };
+  }, [isLiveMode, astraMode]);
 
-  const getModeIcon = (m: GenerationMode) => {
+  const getModeIcon = useCallback((m: GenerationMode) => {
       switch(m) {
           case 'DEEP_THINK': return BrainCircuit;
           case 'WEB_INTEL': return Globe;
@@ -450,17 +461,17 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onBack }) => {
           case 'ASTRA_CODER': return Code2;
           default: return Terminal;
       }
-  }
+  }, []);
 
-  const getThemeClasses = () => {
+  const getThemeClasses = useMemo(() => {
       switch(astraMode) {
           case 'skull': return 'bg-red-950 text-red-100 font-sans'; 
           case 'root': return 'bg-black text-red-500 font-terminal crt-scanlines'; 
           default: return 'bg-black text-white font-sans';
       }
-  };
+  }, [astraMode]);
 
-  const features = [
+  const features = useMemo(() => [
       { id: 'CHAT', label: 'CORE CHAT', desc: 'Standard Astra Intelligence', icon: Terminal },
       { id: 'DEEP_THINK', label: 'DEEP REASONING', desc: 'Complex Problem Solving (High IQ)', icon: BrainCircuit },
       { id: 'WEB_INTEL', label: 'WEB INTEL', desc: 'Live Internet Access & Search', icon: Globe },
@@ -468,12 +479,12 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onBack }) => {
       { id: 'IMAGE_EDIT', label: 'VISION EDIT', desc: 'Modify Images via Prompt', icon: ImageIcon },
       { id: 'ASTRA_DETECTION', label: 'AI DETECTOR', desc: 'Forensic Image Analysis', icon: ScanEye },
       { id: 'ASTRA_CODER', label: 'ASTRA CODER', desc: 'Gemini Canvas Style Dev', icon: Code2 }, 
-  ];
+  ], []);
 
-  const CurrentModeIcon = getModeIcon(genMode);
+  const CurrentModeIcon = useMemo(() => getModeIcon(genMode), [genMode, getModeIcon]);
 
   return (
-    <div className={`fixed inset-0 z-50 flex flex-col h-[100dvh] w-full overflow-hidden ${getThemeClasses()}`}>
+    <div className={`fixed inset-0 z-50 flex flex-col h-[100dvh] w-full overflow-hidden ${getThemeClasses}`}>
       
       {astraMode === 'root' && (
           <>

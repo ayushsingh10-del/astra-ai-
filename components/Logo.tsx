@@ -5,7 +5,7 @@ interface LogoProps {
   isHackerMode?: boolean;
 }
 
-export const Logo: React.FC<LogoProps> = ({ className = "w-12 h-12", isHackerMode = false }) => {
+export const Logo: React.FC<LogoProps> = React.memo(({ className = "w-12 h-12", isHackerMode = false }) => {
   return (
     <svg 
       viewBox="0 0 100 100" 
@@ -104,4 +104,4 @@ export const Logo: React.FC<LogoProps> = ({ className = "w-12 h-12", isHackerMod
 
     </svg>
   );
-};
+});

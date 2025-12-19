@@ -8,7 +8,7 @@ interface VoiceVisualizerProps {
   count?: number;
 }
 
-export const VoiceVisualizer: React.FC<VoiceVisualizerProps> = ({ 
+export const VoiceVisualizer: React.FC<VoiceVisualizerProps> = React.memo(({ 
   data, 
   color = "astra-saffron", 
   count = 12 
@@ -67,4 +67,4 @@ export const VoiceVisualizer: React.FC<VoiceVisualizerProps> = ({
       ))}
     </div>
   );
-};
+});

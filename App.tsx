@@ -1,8 +1,10 @@
 
-import React, { useState } from 'react';
+import React, { useState, lazy, Suspense } from 'react';
 import { LandingPage } from './components/LandingPage';
-import { ChatInterface } from './components/ChatInterface';
 import { AppMode } from './types';
+
+// Lazy load ChatInterface for better initial load performance
+const ChatInterface = lazy(() => import('./components/ChatInterface').then(module => ({ default: module.ChatInterface })));
 
 const App: React.FC = () => {
   const [mode, setMode] = useState<AppMode>(AppMode.LANDING);
@@ -12,7 +14,13 @@ const App: React.FC = () => {
       {mode === AppMode.LANDING ? (
         <LandingPage onStart={() => setMode(AppMode.CHAT)} />
       ) : (
-        <ChatInterface onBack={() => setMode(AppMode.LANDING)} />
+        <Suspense fallback={
+          <div className="w-full min-h-screen bg-astra-black flex items-center justify-center">
+            <div className="text-astra-blue font-orbitron text-xl animate-pulse">INITIALIZING ASTRA...</div>
+          </div>
+        }>
+          <ChatInterface onBack={() => setMode(AppMode.LANDING)} />
+        </Suspense>
       )}
     </div>
   );
